@@ -5,6 +5,7 @@ engine's differing value is visible verbatim in its anchored quote, a human
 should adjudicate which side is wrong."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -75,12 +76,19 @@ class FieldScore:
 
 
 def _digits_in_quote(value: Any, quote: str) -> bool:
+    """Whole-number match only: '1' must not match inside '21' (a false match
+    would misroute wrong-value into gold-suspect). Trailing-zero decimal forms
+    (0.6 vs '0.60') are matched via fixed-precision variants."""
     num = parse_number(value)
     if num is None:
         return False
     text = normalize_text(quote)
-    as_str = f"{num:g}"
-    return as_str in text or (num == int(num) and str(int(num)) in text)
+    forms = {f"{num:g}", f"{num:.1f}", f"{num:.2f}"}
+    if num == int(num):
+        forms.add(str(int(num)))
+    return any(
+        re.search(rf"(?<![\d.]){re.escape(s)}(?![\d.])", text) for s in forms
+    )
 
 
 def _display(value: Any, unit: Optional[str]) -> str:

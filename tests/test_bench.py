@@ -100,3 +100,28 @@ def test_aggregate_and_round_trip():
     assert summary.per_field["n_total"]["agreement"] == 1.0
     assert summary.taxonomy_counts["missed"] == 1
     assert BenchSummary.from_dict(summary.to_dict()) == summary
+
+
+def test_missed_when_field_never_extracted():
+    extraction = study()  # field neither accepted nor flagged
+    gold = {"s1": {"n_total": gv("124", 124.0, precision=0)}}
+    s = by_field(score_all([extraction], gold, SCHEMA, exact_judge))
+    assert s["n_total"].taxonomy == "missed"
+    assert s["n_total"].in_denominator
+    assert not s["n_total"].flagged
+
+
+def test_gold_suspect_requires_whole_number_match():
+    # engine value 128 is wrong; the quote contains 1280 — substring must not rescue it
+    extraction = study(accepted={"n_total": ev("n_total", 128, quote="a cohort of 1280 patients")})
+    gold = {"s1": {"n_total": gv("124", 124.0, precision=0)}}
+    s = by_field(score_all([extraction], gold, SCHEMA, exact_judge))
+    assert s["n_total"].taxonomy == "wrong-value"
+
+
+def test_gold_suspect_matches_trailing_zero_decimals():
+    extraction = study(accepted={"mean_age": ev("mean_age", 61.2, unit="years",
+                                                quote="mean age 61.20 years")})
+    gold = {"s1": {"mean_age": gv("16.2", 16.2, unit="years", precision=1)}}
+    s = by_field(score_all([extraction], gold, SCHEMA, exact_judge))
+    assert s["mean_age"].taxonomy == "gold-suspect"
