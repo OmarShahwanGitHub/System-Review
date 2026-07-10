@@ -51,6 +51,8 @@ def load_schema(path: Path) -> Schema:
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     if not isinstance(raw, dict) or "fields" not in raw:
         raise SchemaError(f"{path}: expected a top-level 'fields' list")
+    if not isinstance(raw["fields"], list) or not raw["fields"]:
+        raise SchemaError(f"{path}: 'fields' must be a non-empty list")
     specs: list[FieldSpec] = []
     seen: set[str] = set()
     for i, entry in enumerate(raw["fields"]):
