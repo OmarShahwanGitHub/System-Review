@@ -62,3 +62,23 @@ def test_extract_study_runs_two_passes_with_different_framings():
     assert client.prompts[0] != client.prompts[1]  # framings differ
     # pass-b lists fields in reversed order
     assert client.prompts[1].index("mean_age") < client.prompts[1].index("n_total")
+
+
+def test_run_pass_drops_malformed_entries():
+    result = {
+        "n_total": {"value": 124, "unit": None, "quote": "", "page": 2, "confidence": 0.9},
+        "mean_age": {"value": 61.2, "unit": "years", "quote": "mean age 61.2 years",
+                     "page": "four", "confidence": 0.9},
+        "blinding": {"value": "double-blind", "unit": None,
+                     "quote": "double-blind trial", "page": 1, "confidence": 0.8},
+    }
+    client = FakeToolClient([result])
+    cands, _ = run_pass(client, "m", b"%PDF", "smith-2019", SCHEMA, FRAMINGS[0])
+    assert "n_total" not in cands       # empty quote -> dropped, never a Candidate
+    assert "mean_age" not in cands      # non-integer page -> dropped
+    assert cands["blinding"].value == "double-blind"
+
+
+def test_prompt_version_constant():
+    from srx.extractor import PROMPT_VERSION
+    assert PROMPT_VERSION == "p1"
