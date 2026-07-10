@@ -80,3 +80,48 @@ def test_unmapped_column_warns_but_loads(tmp_path):
     with pytest.warns(UserWarning, match="Notes"):
         g = load_gold(gold, mapping, SCHEMA)
     assert g["smith-2019"]["n_total"].value == 124.0
+
+
+def test_missing_study_id_column_rejected(tmp_path):
+    gold, mapping = write(tmp_path, "id,N randomised\ns1,5\n")
+    with pytest.raises(GoldError, match="study_id"):
+        load_gold(gold, mapping, SCHEMA)
+
+
+def test_empty_study_id_rejected(tmp_path):
+    gold, mapping = write(
+        tmp_path,
+        "study_id,N randomised,Mean age (I),Country\n"
+        " ,124,61.2,UK\n",
+    )
+    with pytest.raises(GoldError, match="empty study id"):
+        load_gold(gold, mapping, SCHEMA)
+
+
+def test_unit_override_beats_spec_unit(tmp_path):
+    gold, mapping = write(
+        tmp_path,
+        "study_id,Mean age (I)\ns1,732\n",
+        'study_id_column: study_id\ncolumns:\n  "Mean age (I)": {field: mean_age, unit: months}\n',
+    )
+    g = load_gold(gold, mapping, SCHEMA)
+    assert g["s1"]["mean_age"].unit == "months"   # override wins over spec's "years"
+
+
+def test_default_study_id_column(tmp_path):
+    gold, mapping = write(
+        tmp_path,
+        "study_id,Country\ns1,UK\n",
+        'columns:\n  "Country": country\n',
+    )
+    assert load_gold(gold, mapping, SCHEMA)["s1"]["country"].value == "UK"
+
+
+def test_mapping_dict_missing_field_key_rejected(tmp_path):
+    gold, mapping = write(
+        tmp_path,
+        "study_id,Country\ns1,UK\n",
+        'study_id_column: study_id\ncolumns:\n  "Country": {unit: years}\n',
+    )
+    with pytest.raises(GoldError, match="field"):
+        load_gold(gold, mapping, SCHEMA)

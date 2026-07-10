@@ -33,6 +33,8 @@ def load_gold(gold_csv: Path, mapping_yaml: Path, schema: Schema) -> dict[str, d
     columns: dict[str, dict] = {}
     for col, target in (mapping.get("columns") or {}).items():
         entry = {"field": target, "unit": None} if isinstance(target, str) else dict(target)
+        if "field" not in entry:
+            raise GoldError(f"{mapping_yaml}: column '{col}' mapping needs a 'field' key")
         if entry["field"] not in schema.by_id:
             raise GoldError(f"{mapping_yaml}: column '{col}' maps to unknown field '{entry['field']}'")
         columns[col] = entry
