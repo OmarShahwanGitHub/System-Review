@@ -107,6 +107,8 @@ def values_equal(
     gold_precision: Optional[int] = None,
     convert_units: bool = True,
 ) -> bool:
+    if engine_value is None or gold_value is None:
+        return False  # absence is handled upstream; None never equals anything
     if spec.type == "bool":
         e, g = _bool_of(engine_value), _bool_of(gold_value)
         return e is not None and e == g

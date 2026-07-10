@@ -77,3 +77,14 @@ def test_values_equal_text_ci_and_p_formats():
     assert values_equal("0.75 (95% CI 0.60 to 0.94)", None, "0.75 (0.60–0.94)", None, txt)
     assert not values_equal("0.80 (0.61–0.94)", None, "0.75 (0.60–0.94)", None, txt)
     assert values_equal("p < 0.001", None, "<0.001", None, txt)
+
+
+def test_none_value_never_equals_placeholder_text():
+    assert not values_equal(None, None, "None", None, CAT)
+    assert not values_equal("none", None, None, None, CAT)
+    assert not values_equal(None, None, None, None, NUM)
+
+
+def test_parse_number_excludes_bools():
+    assert parse_number(True) is None
+    assert parse_number(False) is None
