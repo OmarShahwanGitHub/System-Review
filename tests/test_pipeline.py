@@ -1,10 +1,11 @@
 import json
 
+import pytest
 from conftest import make_pdf
 
 from srx.claude_client import ClaudeError, Usage
 from srx.pipeline import RunConfig, load_run_extractions, run_extraction
-from srx.project import open_project
+from srx.project import ProjectError, open_project
 from srx.runstore import RunStore
 
 SCHEMA_YAML = """\
@@ -101,3 +102,14 @@ def test_errored_study_is_recorded_and_run_continues(tmp_path):
     assert store.study_status(run_id, "beta") == "done"
     assert [e.study_id for e in load_run_extractions(project.runs_dir / run_id)] == ["beta"]
     assert store.run_row(run_id)["status"] == "done"
+
+
+def test_resume_rejects_schema_drift(tmp_path):
+    project = open_project(make_project(tmp_path))
+    store = RunStore(project.db_path)
+    client = FakeClient()
+    run_id = run_extraction(project, RunConfig(cost_cap_usd=1.5), client, store)
+    (project.root / "schema.yaml").write_text(
+        SCHEMA_YAML + "  - id: extra_field\n    type: text\n")
+    with pytest.raises(ProjectError, match="schema.yaml has changed"):
+        run_extraction(project, RunConfig(resume=run_id), client, store)

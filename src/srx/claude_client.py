@@ -1,5 +1,6 @@
 """Anthropic SDK wrapper (spec §5, §8): forced tool use for structured output,
-temperature 0 everywhere, exponential-backoff retry, per-call cost accounting.
+exponential-backoff retry, and cache-aware per-call cost accounting. No sampling
+parameters are sent (spec §5 amendment, 2026-07-10).
 Tests inject a fake SDK; nothing here may be network-hit in tests."""
 from __future__ import annotations
 
@@ -15,9 +16,10 @@ import anthropic
 # https://docs.anthropic.com/en/docs/about-claude/pricing and edit as needed;
 # projects can override via config.yaml "pricing:".
 DEFAULT_PRICING: dict[str, tuple[float, float]] = {
-    "claude-fable-5": (15.0, 75.0),
+    "claude-fable-5": (10.0, 50.0),
     "claude-sonnet-5": (3.0, 15.0),
     "claude-haiku-4-5-20251001": (1.0, 5.0),
+    "claude-haiku-4-5": (1.0, 5.0),
 }
 
 RETRY_STATUSES = {429, 500, 502, 503, 529}
@@ -32,11 +34,15 @@ class Usage:
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
 
     def add(self, other: "Usage") -> None:
         self.input_tokens += other.input_tokens
         self.output_tokens += other.output_tokens
         self.cost_usd += other.cost_usd
+        self.cache_creation_input_tokens += other.cache_creation_input_tokens
+        self.cache_read_input_tokens += other.cache_read_input_tokens
 
 
 def pdf_document_block(pdf_bytes: bytes) -> dict:
@@ -62,12 +68,20 @@ class ClaudeClient:
         self._pricing = DEFAULT_PRICING if pricing is None else pricing
         self._sleep = sleep
 
-    def _cost(self, model: str, in_tok: int, out_tok: int) -> float:
+    def _cost(self, model: str, usage: "Usage") -> float:
         if model not in self._pricing:
             warnings.warn(f"no pricing for model '{model}'; costing 0.0 — edit pricing config")
             return 0.0
         in_price, out_price = self._pricing[model]
-        return in_tok / 1e6 * in_price + out_tok / 1e6 * out_price
+        # Cache tokens are excluded from usage.input_tokens by the API and are
+        # billed at 1.25x (creation) / 0.1x (read) of the input price — without
+        # them the cost cap fails open on PDF-heavy runs.
+        effective_in = (
+            usage.input_tokens
+            + 1.25 * usage.cache_creation_input_tokens
+            + 0.1 * usage.cache_read_input_tokens
+        )
+        return effective_in / 1e6 * in_price + usage.output_tokens / 1e6 * out_price
 
     def tool_call(
         self,
@@ -83,10 +97,13 @@ class ClaudeClient:
         last_err: Optional[Exception] = None
         for attempt in range(max_retries):
             try:
+                # No sampling params: the current API rejects non-default temperature
+                # on the Fable/Sonnet 5 models (400). Reproducibility comes from
+                # prompt-version pinning + benchmark regression (spec §5, amended
+                # 2026-07-10), not from temperature pinning.
                 resp = self._client.messages.create(
                     model=model,
                     max_tokens=max_tokens,
-                    temperature=0,
                     system=system,
                     messages=messages,
                     tools=[{
@@ -109,8 +126,10 @@ class ClaudeClient:
             usage = Usage(
                 input_tokens=resp.usage.input_tokens,
                 output_tokens=resp.usage.output_tokens,
+                cache_creation_input_tokens=getattr(resp.usage, "cache_creation_input_tokens", 0) or 0,
+                cache_read_input_tokens=getattr(resp.usage, "cache_read_input_tokens", 0) or 0,
             )
-            usage.cost_usd = self._cost(model, usage.input_tokens, usage.output_tokens)
+            usage.cost_usd = self._cost(model, usage)
             for block in resp.content:
                 if getattr(block, "type", None) == "tool_use":
                     return dict(block.input), usage

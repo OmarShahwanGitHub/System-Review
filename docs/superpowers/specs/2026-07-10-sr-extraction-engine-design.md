@@ -2,6 +2,7 @@
 
 **Date:** 2026-07-10
 **Status:** Approved (brainstorm with Omar, 2026-07-10)
+**Amendment (2026-07-10, final whole-branch review):** (1) The "temperature 0 everywhere" rule is retired — the current Anthropic API rejects non-default temperature on the Fable 5 / Sonnet 5 models (400); no sampling parameters are sent, and reproducibility rests on prompt-version pinning plus benchmark regression, which was always the operative mechanism. (2) Cost accounting explicitly includes prompt-cache tokens (cache-creation at 1.25×, cache-read at 0.1× input price) so the cost cap cannot fail open on PDF-heavy runs.
 **Scope of this spec:** Phases 0–1 (extraction engine + validation benchmark + meta-analysis core). Implementation planning begins with Phase 0; Phase 1 is planned once the Phase 0 gate passes. Phases 2–4 are committed and sketched here; each gets its own spec before build. Phase 5 (web app) gets its own brainstorm → spec → plan cycle.
 
 ## 1. Product context
@@ -42,8 +43,8 @@ No naked numbers, ever. **Presentation rule (user amendment):** provenance is ne
 
 - Python 3.12 package (working name `srx`) exposing a `sr` CLI: `sr extract`, `sr bench`, `sr report`.
 - Storage: SQLite + plain files in a project directory. No server.
-- Claude API for extraction — Fable-class model for the hard reads, cheaper models for utility steps. Temperature 0 everywhere.
-- Cost: per-run token/cost logging; configurable cost cap (default $20/run) that aborts cleanly at the checkpoint boundary.
+- Claude API for extraction — Fable-class model for the hard reads, cheaper models for utility steps. No sampling parameters are sent (current API rejects non-default temperature on these models — see Amendment); reproducibility via prompt-version pinning + benchmark regression.
+- Cost: per-run token/cost logging including prompt-cache tokens (creation 1.25×, read 0.1× input price); configurable cost cap (default $20/run) that aborts cleanly at the checkpoint boundary.
 - Phase 1 adds R + `metafor` as a subprocess dependency (§10).
 
 Project directory layout:

@@ -48,7 +48,7 @@ def test_tool_call_returns_input_and_costed_usage():
     assert usage.input_tokens == 1000
     assert usage.cost_usd == pytest.approx(1000 / 1e6 * 10.0 + 200 / 1e6 * 50.0)
     call = sdk.calls[0]
-    assert call["temperature"] == 0
+    assert "temperature" not in call
     assert call["tool_choice"] == {"type": "tool", "name": "record"}
     assert call["tools"][0]["input_schema"] == TOOL_SCHEMA
 
@@ -97,3 +97,21 @@ def test_usage_add_and_pdf_block():
     assert block["type"] == "document"
     assert block["source"]["media_type"] == "application/pdf"
     assert block["cache_control"] == {"type": "ephemeral"}
+
+
+def test_cache_tokens_are_costed():
+    resp = SimpleNamespace(
+        content=[SimpleNamespace(type="tool_use", name="record", input={"x": 1})],
+        usage=SimpleNamespace(input_tokens=1000, output_tokens=200,
+                              cache_creation_input_tokens=10_000,
+                              cache_read_input_tokens=50_000),
+    )
+    c = ClaudeClient(client=FakeSDK([resp]), pricing={"m1": (10.0, 50.0)})
+    _, usage = c.tool_call(
+        model="m1", system="s", messages=[{"role": "user", "content": "hi"}],
+        tool_name="record", tool_schema=TOOL_SCHEMA,
+    )
+    assert usage.cache_creation_input_tokens == 10_000
+    assert usage.cache_read_input_tokens == 50_000
+    expected = (1000 + 1.25 * 10_000 + 0.1 * 50_000) / 1e6 * 10.0 + 200 / 1e6 * 50.0
+    assert usage.cost_usd == pytest.approx(expected)

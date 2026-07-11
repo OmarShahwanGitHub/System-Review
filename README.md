@@ -1,4 +1,4 @@
-# System-Review
+# srx — systematic review extraction engine
 
 Engine for automating the **systematic review** extraction + synthesis workflow.
 Phase 0 (this repo state): dual-pass AI data extraction with quote/page

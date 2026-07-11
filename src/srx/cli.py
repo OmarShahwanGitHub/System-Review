@@ -7,13 +7,20 @@ import sys
 from pathlib import Path
 
 from srx.bench import BenchSummary, FieldScore, aggregate, exact_judge, make_judge, score_all
-from srx.claude_client import ClaudeClient
+from srx.claude_client import ClaudeClient, DEFAULT_PRICING
 from srx.goldload import GoldError, load_gold
 from srx.pipeline import config_from_project, load_run_extractions, run_extraction
 from srx.project import ProjectError, open_project
 from srx.report import render_html, render_markdown, write_report
 from srx.runstore import RunStore
 from srx.schema import SchemaError, draft_schema_from_csv, load_schema
+
+
+def _make_client(project, client_factory):
+    if client_factory is not None:
+        return client_factory()
+    overrides = {k: tuple(v) for k, v in (project.config.get("pricing") or {}).items()}
+    return ClaudeClient(pricing={**DEFAULT_PRICING, **overrides})
 
 
 def _resolve_run(store: RunStore, run_id: str | None) -> str:
@@ -33,7 +40,7 @@ def _cmd_extract(args, client_factory) -> int:
         project, extract_model=args.model, judge_model=args.judge_model,
         cost_cap_usd=args.cost_cap, resume=args.resume)
     store = RunStore(project.db_path)
-    client = client_factory()
+    client = _make_client(project, client_factory)
     run_id = run_extraction(project, config, client, store)
     extractions = load_run_extractions(project.runs_dir / run_id)
     n_flagged = sum(len(e.flagged) for e in extractions)
@@ -57,8 +64,15 @@ def _cmd_bench(args, client_factory) -> int:
     run_dir = project.runs_dir / run_id
     extractions = load_run_extractions(run_dir)
     gold = load_gold(project.gold_csv, project.mapping_yaml, schema)
+    missing = sorted(set(gold) - {e.study_id for e in extractions})
+    if missing:
+        print(
+            f"warning: {len(missing)} gold study id(s) have no extraction and "
+            f"score as missed: {', '.join(missing)}",
+            file=sys.stderr,
+        )
     config = config_from_project(project)
-    judge = exact_judge if args.no_judge else make_judge(client_factory(), config.judge_model)
+    judge = exact_judge if args.no_judge else make_judge(_make_client(project, client_factory), config.judge_model)
     scores = score_all(extractions, gold, schema, judge)
     summary = aggregate(scores, schema)
     store.record_bench(run_id, summary.per_field)
@@ -114,7 +128,6 @@ def _cmd_schema_init(args, client_factory) -> int:
 
 
 def main(argv=None, client_factory=None) -> int:
-    client_factory = client_factory or (lambda: ClaudeClient())
     parser = argparse.ArgumentParser(
         prog="sr", description="Systematic review extraction engine")
     sub = parser.add_subparsers(dest="command", required=True)

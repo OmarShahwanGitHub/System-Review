@@ -152,6 +152,21 @@ def score_all(extractions: list[StudyExtraction],
             score = _classify(spec, extraction, study_gold.get(spec.id), judge)
             if score is not None:
                 scores.append(score)
+
+    covered = {e.study_id for e in extractions}
+    for study_id, fields in gold.items():
+        if study_id in covered:
+            continue
+        for spec in schema.fields:
+            gv = fields.get(spec.id)
+            if gv is None:
+                continue
+            scores.append(FieldScore(
+                study_id=study_id, field_id=spec.id, taxonomy="missed",
+                engine_display="— (no extraction)",
+                gold_display=_display(gv.raw, gv.unit),
+                flagged=False, in_denominator=True, provenance=None,
+            ))
     return scores
 
 

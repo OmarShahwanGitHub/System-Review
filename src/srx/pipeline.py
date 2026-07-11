@@ -37,19 +37,24 @@ def config_from_project(project: Project, **overrides) -> RunConfig:
 def run_extraction(project: Project, config: RunConfig, client, store: RunStore) -> str:
     schema = load_schema(project.schema_path)
     run_id = config.resume or new_run_id()
-    run_dir = project.runs_dir / run_id
-    ck_dir = run_dir / "studies"
-    ck_dir.mkdir(parents=True, exist_ok=True)
 
     if config.resume:
-        if store.run_row(run_id) is None:
+        row = store.run_row(run_id)
+        if row is None:
             raise ProjectError(f"cannot resume: run '{run_id}' not found")
+        if row["schema_hash"] != schema.hash():
+            raise ProjectError(
+                f"cannot resume run '{run_id}': schema.yaml has changed since the "
+                "run started — start a new run so results stay comparable")
     else:
         store.create_run(
             run_id, schema_hash=schema.hash(),
             models={"extract": config.extract_model, "judge": config.judge_model},
             prompt_version=PROMPT_VERSION,
         )
+    run_dir = project.runs_dir / run_id
+    ck_dir = run_dir / "studies"
+    ck_dir.mkdir(parents=True, exist_ok=True)
 
     # cost so far (resume case) comes from existing checkpoints
     total_cost = sum(
@@ -72,6 +77,10 @@ def run_extraction(project: Project, config: RunConfig, client, store: RunStore)
             pdf_bytes = pdf_path.read_bytes()
             pass_a, pass_b, usage = extract_study(
                 client, config.extract_model, pdf_bytes, study_id, schema)
+            # Adjudication runs on extract_model deliberately: resolving a pass
+            # disagreement is the hardest read, so it gets the strongest model.
+            # judge_model is bench's semantic text judge (cli._cmd_bench), not
+            # the adjudicator.
             accepted, flagged, not_found, adj_usage = reconcile_study(
                 schema=schema, pdf=doc, pass_a=pass_a, pass_b=pass_b,
                 client=client, model=config.extract_model)

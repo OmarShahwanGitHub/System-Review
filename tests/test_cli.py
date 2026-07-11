@@ -80,3 +80,14 @@ def test_missing_project_exits_2(tmp_path, capsys):
     assert main(["extract", "--project", str(tmp_path / "nope")],
                 client_factory=lambda: FakeClient()) == 2
     assert "studies" in capsys.readouterr().err
+
+
+def test_bench_warns_for_gold_study_without_extraction(tmp_path, capsys):
+    root = make_project(tmp_path)
+    (root / "gold" / "gold.csv").write_text("study_id,N randomised\nalpha,124\nghost,50\n")
+    factory = lambda: FakeClient()
+    assert main(["extract", "--project", str(root)], client_factory=factory) == 0
+    assert main(["bench", "--project", str(root), "--no-judge"], client_factory=factory) == 0
+    captured = capsys.readouterr()
+    assert "ghost" in captured.err
+    assert "50.0%" in captured.out

@@ -125,3 +125,13 @@ def test_gold_suspect_matches_trailing_zero_decimals():
     gold = {"s1": {"mean_age": gv("16.2", 16.2, unit="years", precision=1)}}
     s = by_field(score_all([extraction], gold, SCHEMA, exact_judge))
     assert s["mean_age"].taxonomy == "gold-suspect"
+
+
+def test_gold_study_without_extraction_scores_missed():
+    gold = {"ghost-2021": {"n_total": gv("50", 50.0, precision=0),
+                           "mean_age": gv("48.0", 48.0, unit="years", precision=1)}}
+    scores = score_all([], gold, SCHEMA, exact_judge)
+    assert {s.study_id for s in scores} == {"ghost-2021"}
+    assert len(scores) == 2
+    assert all(s.taxonomy == "missed" and s.in_denominator for s in scores)
+    assert aggregate(scores, SCHEMA).overall_agreement == 0.0

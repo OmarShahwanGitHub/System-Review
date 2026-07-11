@@ -15,12 +15,12 @@
 Every task's requirements implicitly include all of these (copied from the spec):
 
 - Python 3.12. On this machine use `/usr/bin/python3.12` (default `python3` is a conda 3.13 — do not use it). Venv lives at `~/.venvs/srx` (Linux FS; the repo is on `/mnt/c`, where venvs are slow).
-- `temperature=0` on **every** model call.
+- ~~`temperature=0` on **every** model call.~~ **Amended 2026-07-10 (final review):** no sampling parameters are sent — the current API 400s on non-default temperature for Fable 5/Sonnet 5; reproducibility = prompt-version pinning + benchmark regression.
 - Provenance on every value: `{value, unit, quote, page, method, anchor_status, confidence}` — no naked numbers anywhere in stored data.
 - Provenance is **never inline** in displayed tables — click-to-expand only (`<details>` in HTML reports).
 - Anchor gate: quote fuzzy-matched ≥ 0.90 on claimed page ±1. No match on a text-bearing PDF → value **flagged, never accepted**. Scanned PDFs → `vision-only` anchors → auto-flagged for human verification.
 - Pass disagreements are **never averaged**: adjudication pass or human-flag queue.
-- Cost: per-run token/cost logging; configurable cost cap, default **$20/run**, aborting cleanly at a per-study checkpoint boundary.
+- Cost: per-run token/cost logging **including prompt-cache tokens (creation 1.25×, read 0.1× input price — amended 2026-07-10)**; configurable cost cap, default **$20/run**, aborting cleanly at a per-study checkpoint boundary.
 - Per-study checkpointing: a run **resumes**, never restarts. API errors: retry w/ exponential backoff; a study that exhausts retries is `errored`, not fatal.
 - Run store is append-only in spirit: never delete rows; benchmark scores recorded per run so reports can diff run-over-run.
 - Benchmark scoring denominator: only accepted values count for agreement; flagged values score as `missed` (flagged notation) — they can never inflate the score.
