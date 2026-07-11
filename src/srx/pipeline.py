@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from srx.claude_client import ClaudeError
+from srx.export import write_evidence_csv
 from srx.extractor import PROMPT_VERSION, extract_study
 from srx.ingest import load_pdf
 from srx.models import StudyExtraction
@@ -103,6 +104,7 @@ def run_extraction(project: Project, config: RunConfig, client, store: RunStore)
         json.dumps([s.to_dict() for s in extractions], indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+    write_evidence_csv(extractions, schema, run_dir)
     store.finish_run(run_id, status, total_cost, {"studies": len(extractions)})
     return run_id
 

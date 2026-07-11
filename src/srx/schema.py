@@ -47,30 +47,37 @@ class Schema:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def load_schema(path: Path) -> Schema:
-    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+def _build_schema(raw, source: str) -> Schema:
     if not isinstance(raw, dict) or "fields" not in raw:
-        raise SchemaError(f"{path}: expected a top-level 'fields' list")
+        raise SchemaError(f"{source}: expected a top-level 'fields' list")
     if not isinstance(raw["fields"], list) or not raw["fields"]:
-        raise SchemaError(f"{path}: 'fields' must be a non-empty list")
+        raise SchemaError(f"{source}: 'fields' must be a non-empty list")
     specs: list[FieldSpec] = []
     seen: set[str] = set()
     for i, entry in enumerate(raw["fields"]):
         if not isinstance(entry, dict) or "id" not in entry or "type" not in entry:
-            raise SchemaError(f"{path}: field #{i} needs at least 'id' and 'type'")
+            raise SchemaError(f"{source}: field #{i} needs at least 'id' and 'type'")
         if entry["type"] not in VALID_TYPES:
             raise SchemaError(
-                f"{path}: field '{entry['id']}' has unknown type '{entry['type']}' "
+                f"{source}: field '{entry['id']}' has unknown type '{entry['type']}' "
                 f"(valid: {sorted(VALID_TYPES)})"
             )
         if entry.get("level", "study") not in VALID_LEVELS:
-            raise SchemaError(f"{path}: field '{entry['id']}' has invalid level")
+            raise SchemaError(f"{source}: field '{entry['id']}' has invalid level")
         if entry["id"] in seen:
-            raise SchemaError(f"{path}: duplicate field id '{entry['id']}'")
+            raise SchemaError(f"{source}: duplicate field id '{entry['id']}'")
         seen.add(entry["id"])
         known = {k: v for k, v in entry.items() if k in FieldSpec.__dataclass_fields__}
         specs.append(FieldSpec(**known))
     return Schema(fields=specs)
+
+
+def load_schema(path: Path) -> Schema:
+    return _build_schema(yaml.safe_load(Path(path).read_text(encoding="utf-8")), str(path))
+
+
+def schema_from_yaml_text(text: str, source: str = "<schema>") -> Schema:
+    return _build_schema(yaml.safe_load(text), source)
 
 
 def _slug(header: str) -> str:

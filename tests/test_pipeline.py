@@ -104,6 +104,17 @@ def test_errored_study_is_recorded_and_run_continues(tmp_path):
     assert store.run_row(run_id)["status"] == "done"
 
 
+def test_run_writes_evidence_exports(tmp_path):
+    project = open_project(make_project(tmp_path))
+    store = RunStore(project.db_path)
+    run_id = run_extraction(project, RunConfig(), FakeClient(), store)
+    run_dir = project.runs_dir / run_id
+    evidence = (run_dir / "evidence.csv").read_text(encoding="utf-8").splitlines()
+    assert evidence[0] == "study_id,n_total"
+    assert evidence[1] == "alpha,124"
+    assert (run_dir / "provenance.csv").exists()
+
+
 def test_resume_rejects_schema_drift(tmp_path):
     project = open_project(make_project(tmp_path))
     store = RunStore(project.db_path)

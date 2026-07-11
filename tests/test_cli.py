@@ -50,6 +50,7 @@ def test_extract_then_bench_then_report(tmp_path, capsys):
     assert main(["extract", "--project", root], client_factory=factory) == 0
     out = capsys.readouterr().out
     assert "run " in out.lower()
+    assert "evidence.csv" in out
     assert main(["bench", "--project", root, "--no-judge"], client_factory=factory) == 0
     out = capsys.readouterr().out
     assert "100.0%" in out and "report.html" in out
@@ -74,6 +75,28 @@ def test_schema_init(tmp_path, capsys):
     assert "n_randomised" in text
     # refuses to overwrite
     assert main(["schema", "init", "--project", str(root)]) == 2
+
+
+def test_schema_init_proposes_from_pdfs_without_template(tmp_path, capsys):
+    root = make_project(tmp_path)
+    (root / "schema.yaml").unlink()
+    (root / "gold" / "gold.csv").unlink()
+
+    class ProposerClient(FakeClient):
+        def tool_call(self, *, tool_name, **kw):
+            if tool_name == "design_schema":
+                return {"fields": [
+                    {"id": "n_total", "type": "int", "description": "Total randomised"},
+                    {"id": "mean_age", "type": "numeric", "unit": "years",
+                     "description": "Mean age"},
+                ]}, Usage(5000, 300, 0.03)
+            raise AssertionError(tool_name)
+
+    assert main(["schema", "init", "--project", str(root)],
+                client_factory=lambda: ProposerClient()) == 0
+    text = (root / "schema.yaml").read_text()
+    assert "n_total" in text and "mean_age" in text
+    assert "proposed" in capsys.readouterr().out
 
 
 def test_missing_project_exits_2(tmp_path, capsys):

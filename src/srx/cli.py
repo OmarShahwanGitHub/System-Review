@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import yaml
+
 from srx.bench import BenchSummary, FieldScore, aggregate, exact_judge, make_judge, score_all
 from srx.claude_client import ClaudeClient, DEFAULT_PRICING
 from srx.goldload import GoldError, load_gold
@@ -13,14 +15,19 @@ from srx.pipeline import config_from_project, load_run_extractions, run_extracti
 from srx.project import ProjectError, open_project
 from srx.report import render_html, render_markdown, write_report
 from srx.runstore import RunStore
-from srx.schema import SchemaError, draft_schema_from_csv, load_schema
+from srx.schema import SchemaError, draft_schema_from_csv, load_schema, schema_from_yaml_text
+from srx.schema_propose import propose_schema_from_pdfs
+
+
+def _client_from_config(config: dict, client_factory):
+    if client_factory is not None:
+        return client_factory()
+    overrides = {k: tuple(v) for k, v in (config.get("pricing") or {}).items()}
+    return ClaudeClient(pricing={**DEFAULT_PRICING, **overrides})
 
 
 def _make_client(project, client_factory):
-    if client_factory is not None:
-        return client_factory()
-    overrides = {k: tuple(v) for k, v in (project.config.get("pricing") or {}).items()}
-    return ClaudeClient(pricing={**DEFAULT_PRICING, **overrides})
+    return _client_from_config(project.config, client_factory)
 
 
 def _resolve_run(store: RunStore, run_id: str | None) -> str:
@@ -48,6 +55,8 @@ def _cmd_extract(args, client_factory) -> int:
     print(f"run {run_id}: {len(extractions)} studies extracted "
           f"({n_flagged} flagged fields for human review), "
           f"status {row['status']}, cost ${row['cost_usd']:.2f}")
+    print(f"evidence table: {project.runs_dir / run_id / 'evidence.csv'} "
+          f"(provenance annex alongside as provenance.csv)")
     store.close()
     return 0
 
@@ -113,17 +122,44 @@ def _cmd_report(args, client_factory) -> int:
     return 0
 
 
+def _load_root_config(root: Path) -> dict:
+    config_path = root / "config.yaml"
+    if not config_path.is_file():
+        return {}
+    return yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+
+
 def _cmd_schema_init(args, client_factory) -> int:
     root = Path(args.project)
     target = root / "schema.yaml"
     if target.exists() and not args.force:
         raise ProjectError(f"{target} exists — pass --force to overwrite")
-    source = Path(args.from_csv) if args.from_csv else root / "gold" / "gold.csv"
-    if not source.is_file():
-        raise ProjectError(f"CSV not found: {source}")
-    target.write_text(draft_schema_from_csv(source), encoding="utf-8")
-    print(f"drafted {target} from {source} — now hand-refine types, units, "
-          f"allowed values, and descriptions before extracting")
+
+    template = Path(args.from_csv) if args.from_csv else root / "gold" / "gold.csv"
+    if args.from_csv or template.is_file():
+        if not template.is_file():
+            raise ProjectError(f"CSV not found: {template}")
+        target.write_text(draft_schema_from_csv(template), encoding="utf-8")
+        print(f"drafted {target} from template {template} — now hand-refine types, "
+              f"units, allowed values, and descriptions before extracting")
+        return 0
+
+    # Default: no template sheet — the model proposes the schema from the PDFs.
+    studies = root / "studies"
+    if not studies.is_dir() or not list(studies.glob("*.pdf")):
+        raise ProjectError(
+            f"{root}: nothing to draft from — provide a template CSV (--from or "
+            f"gold/gold.csv) or put the included-study PDFs in studies/")
+    config = _load_root_config(root)
+    model = args.model or config.get("extract_model") or "claude-fable-5"
+    client = _client_from_config(config, client_factory)
+    text, usage = propose_schema_from_pdfs(client, model, studies,
+                                           review_hint=args.hint or "")
+    target.write_text(text, encoding="utf-8")
+    n_fields = len(schema_from_yaml_text(text).fields)
+    print(f"proposed {target} from your PDFs ({n_fields} fields, model {model}, "
+          f"cost ${usage.cost_usd:.2f}) — review it now: adjust types/units/"
+          f"allowed values, delete fields you don't need, then run `sr extract`")
     return 0
 
 
@@ -154,9 +190,17 @@ def main(argv=None, client_factory=None) -> int:
 
     p_schema = sub.add_parser("schema", help="schema utilities")
     schema_sub = p_schema.add_subparsers(dest="schema_command", required=True)
-    p = schema_sub.add_parser("init", help="draft schema.yaml from a gold CSV's headers")
+    p = schema_sub.add_parser(
+        "init",
+        help="draft schema.yaml — from a template CSV if one exists, otherwise "
+             "the model proposes it from your PDFs")
     p.add_argument("--project", default=".")
-    p.add_argument("--from", dest="from_csv", default=None)
+    p.add_argument("--from", dest="from_csv", default=None,
+                   help="template CSV whose headers define the fields")
+    p.add_argument("--model", default=None,
+                   help="model for the PDF-based proposal (default: project extract_model)")
+    p.add_argument("--hint", default=None,
+                   help="one-line description of the review to guide the proposal")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=_cmd_schema_init)
 
