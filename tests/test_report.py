@@ -15,12 +15,15 @@ SCORE = FieldScore(
 )
 
 
-def test_html_provenance_is_behind_details_and_escaped():
+def test_html_provenance_is_hover_tooltip_and_escaped():
     html = render_html(SUMMARY, [SCORE], run_id="r1")
-    assert "<details" in html
-    body, details = html.split("<details", 1)
+    assert 'class="prov"' in html
+    assert "td.val:hover .prov" in html        # hover reveal wired in CSS
+    assert "td.val:focus .prov" in html        # keyboard focus works too
+    assert "<details" not in html              # dropdown removed (user amendment)
+    body, prov = html.split('<span class="prov"', 1)
     assert "randomised" not in body            # provenance never inline (spec §4)
-    assert "randomised" in details
+    assert "randomised" in prov
     assert "<script>" not in html              # escaped
     assert "&lt;script&gt;" in html
     assert "systematic review" in html.lower()

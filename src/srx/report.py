@@ -1,5 +1,7 @@
 """Benchmark reports (spec §4, §7). The displayed table is clean values only;
-provenance (quote, page, method, confidence) expands on click via <details>.
+provenance (quote, page, method, confidence) appears as a small tooltip on
+hover or keyboard focus — never inline (user amendment 2026-07-10: tooltip
+instead of a <details> dropdown).
 Self-contained HTML: inline CSS, zero external requests, zero JS."""
 from __future__ import annotations
 
@@ -23,8 +25,13 @@ th { background: #f8f9fa; text-align: left; }
 .cards { display: flex; gap: 1rem; }
 .card { border: 1px solid #dadce0; border-radius: 8px; padding: 1rem; min-width: 10rem; }
 .card b { font-size: 22px; display: block; }
-details summary { cursor: pointer; }
-details div { margin-top: 6px; font-size: 12px; color: #5f6368; }
+td.val { position: relative; cursor: default; }
+td.val .prov { display: none; position: absolute; left: 0; top: calc(100% + 2px); z-index: 5;
+  background: #fff; border: 1px solid #dadce0; border-radius: 6px; padding: 8px 10px;
+  width: max-content; min-width: 240px; max-width: 380px; white-space: normal;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18); font-size: 12px; color: #3c4043; }
+td.val:hover .prov { display: block; }
+td.val:focus .prov { display: block; }
 """
 
 
@@ -48,8 +55,8 @@ def _cell(score: FieldScore) -> str:
             f" · confidence: {_esc(p.get('confidence', ''))}",
         ]
     body = "<br>".join(inner)
-    return (f'<td style="background:{color}"><details><summary>{label}</summary>'
-            f"<div>{body}</div></details></td>")
+    return (f'<td class="val" tabindex="0" style="background:{color}">{label}'
+            f'<span class="prov">{body}</span></td>')
 
 
 def render_html(summary: BenchSummary, scores: list[FieldScore], run_id: str,
@@ -89,7 +96,7 @@ def render_html(summary: BenchSummary, scores: list[FieldScore], run_id: str,
         + "".join(rows) + "</table>"
     )
 
-    # study × field matrix — clean values, provenance on click (spec §4)
+    # study × field matrix — clean values, provenance as hover tooltip (spec §4)
     study_ids = sorted({s.study_id for s in scores})
     field_ids = list(summary.per_field.keys())
     by_key = {(s.study_id, s.field_id): s for s in scores}
@@ -102,7 +109,7 @@ def render_html(summary: BenchSummary, scores: list[FieldScore], run_id: str,
         matrix_rows.append(f"<tr><th>{_esc(sid)}</th>{''.join(cells)}</tr>")
     parts.append(
         "<h2>Study × field matrix</h2>"
-        "<p>Click a value to see its provenance (quote, page, method, confidence).</p>"
+        "<p>Hover over a value (or tab to it) to see its provenance (quote, page, method, confidence).</p>"
         "<table><tr><th>Study</th>" + "".join(f"<th>{_esc(f)}</th>" for f in field_ids)
         + "</tr>" + "".join(matrix_rows) + "</table>"
     )

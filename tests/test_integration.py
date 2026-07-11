@@ -120,7 +120,7 @@ def test_end_to_end(tmp_path):
     store.record_bench(run_id, summary.per_field)
     html = render_html(summary, scores, run_id,
                        (run_id, {fid: 0.5 for fid in summary.per_field}))
-    assert "<details" in html and "Δ" in html
+    assert 'class="prov"' in html and "Δ" in html
 
     # scores.json shape used by `sr report`
     payload = {"summary": summary.to_dict(), "scores": [s.to_dict() for s in scores]}

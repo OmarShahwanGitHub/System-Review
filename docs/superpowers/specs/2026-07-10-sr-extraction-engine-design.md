@@ -37,7 +37,7 @@ Every extracted value is stored as:
   anchor_status (verified | vision-only | failed), confidence }
 ```
 
-No naked numbers, ever. **Presentation rule (user amendment):** provenance is never shown inline in tables. Displayed tables are clean values only; provenance appears on demand — click-to-expand in HTML reports, click-to-open-PDF-at-highlight in the later web app. Exports split the same way: a clean evidence-table sheet plus a linked provenance annex sheet.
+No naked numbers, ever. **Presentation rule (user amendment):** provenance is never shown inline in tables. Displayed tables are clean values only; provenance appears on demand — a small hover/focus tooltip in HTML reports (user amendment 2026-07-10: tooltip popup rather than an expandable dropdown), click-to-open-PDF-at-highlight in the later web app. Exports split the same way: a clean evidence-table sheet plus a linked provenance annex sheet.
 
 ## 5. Stack
 
