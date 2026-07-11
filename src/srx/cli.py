@@ -13,7 +13,7 @@ from srx.claude_client import ClaudeClient, DEFAULT_PRICING
 from srx.goldload import GoldError, load_gold
 from srx.pipeline import config_from_project, load_run_extractions, run_extraction
 from srx.project import ProjectError, open_project
-from srx.report import render_html, render_markdown, write_report
+from srx.report import render_extraction_html, render_html, render_markdown, write_report
 from srx.runstore import RunStore
 from srx.schema import SchemaError, draft_schema_from_csv, load_schema, schema_from_yaml_text
 from srx.schema_propose import propose_schema_from_pdfs
