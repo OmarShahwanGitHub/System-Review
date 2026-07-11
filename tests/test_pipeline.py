@@ -113,6 +113,8 @@ def test_run_writes_evidence_exports(tmp_path):
     assert evidence[0] == "study_id,n_total"
     assert evidence[1] == "alpha,124"
     assert (run_dir / "provenance.csv").exists()
+    report = (run_dir / "report.html").read_text(encoding="utf-8")
+    assert 'class="prov"' in report              # hover report written by extract itself
 
 
 def test_resume_rejects_schema_drift(tmp_path):

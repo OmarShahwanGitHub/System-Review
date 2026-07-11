@@ -57,6 +57,8 @@ def _cmd_extract(args, client_factory) -> int:
           f"status {row['status']}, cost ${row['cost_usd']:.2f}")
     print(f"evidence table: {project.runs_dir / run_id / 'evidence.csv'} "
           f"(provenance annex alongside as provenance.csv)")
+    print(f"review report:  {project.runs_dir / run_id / 'report.html'} "
+          f"(hover any value for its quote and page)")
     store.close()
     return 0
 
@@ -111,7 +113,17 @@ def _cmd_report(args, client_factory) -> int:
     run_dir = project.runs_dir / run_id
     scores_path = run_dir / "scores.json"
     if not scores_path.is_file():
-        raise ProjectError(f"run '{run_id}' has no scores.json — run `sr bench` first")
+        # No benchmark for this run — render the extraction review report.
+        if not (run_dir / "extraction.json").is_file():
+            raise ProjectError(f"run '{run_id}' has no extraction.json")
+        schema = load_schema(project.schema_path)
+        extractions = load_run_extractions(run_dir)
+        path = write_report(
+            run_dir, render_extraction_html(extractions, schema, run_id))
+        print(f"report: {path} (extraction review — run `sr bench` with a gold "
+              f"sheet for scored comparison)")
+        store.close()
+        return 0
     data = json.loads(scores_path.read_text(encoding="utf-8"))
     summary = BenchSummary.from_dict(data["summary"])
     scores = [FieldScore.from_dict(d) for d in data["scores"]]

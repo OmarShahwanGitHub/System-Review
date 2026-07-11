@@ -1,5 +1,12 @@
 from srx.bench import BenchSummary, FieldScore
-from srx.report import render_html, render_markdown, write_report
+from srx.models import Candidate, ExtractedValue, FlaggedField, StudyExtraction
+from srx.report import (
+    render_extraction_html,
+    render_html,
+    render_markdown,
+    write_report,
+)
+from srx.schema import FieldSpec, Schema
 
 SUMMARY = BenchSummary(
     overall_agreement=0.75, numeric_agreement=0.8,
@@ -38,6 +45,32 @@ def test_html_diff_column_when_prev_given():
 def test_markdown_summary():
     md = render_markdown(SUMMARY, run_id="r1")
     assert "75.0%" in md and "n_total" in md
+
+
+def test_extraction_report_without_gold():
+    schema = Schema(fields=[FieldSpec(id="n_total", type="int"),
+                            FieldSpec(id="mean_age", type="numeric", unit="years"),
+                            FieldSpec(id="funding", type="text")])
+    extraction = StudyExtraction(
+        study_id="smith-2019", scanned=False,
+        accepted={"n_total": ExtractedValue(
+            field_id="n_total", value=124, unit=None,
+            quote="124 patients were randomised", page=3,
+            method="pass-agreed", anchor_status="verified", confidence=0.9)},
+        flagged={"mean_age": FlaggedField(
+            field_id="mean_age", reason="pass-disagreement-unresolved",
+            candidates=[Candidate(value=61.2, unit="years",
+                                  quote="mean age 61.2", page=4, confidence=0.8)])},
+        not_found=["funding"], cost_usd=0.1)
+    html = render_extraction_html([extraction], schema, run_id="r9")
+    assert "td.val:hover .prov" in html          # same tooltip mechanism
+    body, prov = html.split('<span class="prov"', 1)
+    assert "randomised" not in body              # provenance never inline
+    assert "randomised" in prov
+    assert "⚑ review" in html                    # flagged cell marker
+    assert "pass-disagreement-unresolved" in html
+    assert "Flagged for review" in html and "Coverage" in html
+    assert "r9" in html and "systematic review" in html.lower()
 
 
 def test_write_report(tmp_path):

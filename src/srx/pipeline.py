@@ -10,6 +10,7 @@ from typing import Optional
 from srx.claude_client import ClaudeError
 from srx.export import write_evidence_csv
 from srx.extractor import PROMPT_VERSION, extract_study
+from srx.report import render_extraction_html, write_report
 from srx.ingest import load_pdf
 from srx.models import StudyExtraction
 from srx.project import Project, ProjectError
@@ -105,6 +106,7 @@ def run_extraction(project: Project, config: RunConfig, client, store: RunStore)
         encoding="utf-8",
     )
     write_evidence_csv(extractions, schema, run_dir)
+    write_report(run_dir, render_extraction_html(extractions, schema, run_id))
     store.finish_run(run_id, status, total_cost, {"studies": len(extractions)})
     return run_id
 

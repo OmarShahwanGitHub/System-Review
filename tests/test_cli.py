@@ -77,6 +77,17 @@ def test_schema_init(tmp_path, capsys):
     assert main(["schema", "init", "--project", str(root)]) == 2
 
 
+def test_report_works_without_bench(tmp_path, capsys):
+    root = make_project(tmp_path)
+    (root / "gold" / "gold.csv").unlink()          # no gold sheet at all
+    factory = lambda: FakeClient()
+    assert main(["extract", "--project", str(root)], client_factory=factory) == 0
+    out = capsys.readouterr().out
+    assert "report.html" in out                    # extract announces the report
+    assert main(["report", "--project", str(root)], client_factory=factory) == 0
+    assert "extraction review" in capsys.readouterr().out
+
+
 def test_schema_init_proposes_from_pdfs_without_template(tmp_path, capsys):
     root = make_project(tmp_path)
     (root / "schema.yaml").unlink()

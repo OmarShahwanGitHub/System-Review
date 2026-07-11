@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Optional
 
 from srx.bench import BenchSummary, FieldScore
+from srx.models import StudyExtraction
+from srx.schema import Schema
 
 _COLORS = {
     "correct": "#e6f4ea", "wrong-value": "#fce8e6", "unit-mismatch": "#fef7e0",
@@ -43,9 +45,17 @@ def _esc(x) -> str:
     return html.escape(str(x))
 
 
+def _tooltip_cell(label: str, lines: list[str], color: str) -> str:
+    """label and lines must already be HTML-escaped by the caller."""
+    if not lines:
+        return f'<td style="background:{color}">{label}</td>'
+    body = "<br>".join(lines)
+    return (f'<td class="val" tabindex="0" style="background:{color}">{label}'
+            f'<span class="prov">{body}</span></td>')
+
+
 def _cell(score: FieldScore) -> str:
     color = _COLORS.get(score.taxonomy, "#ffffff")
-    label = _esc(score.engine_display)
     inner = [f"<i>{_esc(score.taxonomy)}</i>", f"gold: {_esc(score.gold_display)}"]
     if score.provenance:
         p = score.provenance
@@ -54,9 +64,7 @@ def _cell(score: FieldScore) -> str:
             f"method: {_esc(p.get('method', ''))} · anchor: {_esc(p.get('anchor_status', ''))}"
             f" · confidence: {_esc(p.get('confidence', ''))}",
         ]
-    body = "<br>".join(inner)
-    return (f'<td class="val" tabindex="0" style="background:{color}">{label}'
-            f'<span class="prov">{body}</span></td>')
+    return _tooltip_cell(_esc(score.engine_display), inner, color)
 
 
 def render_html(summary: BenchSummary, scores: list[FieldScore], run_id: str,
@@ -111,6 +119,64 @@ def render_html(summary: BenchSummary, scores: list[FieldScore], run_id: str,
         "<h2>Study × field matrix</h2>"
         "<p>Hover over a value (or tab to it) to see its provenance (quote, page, method, confidence).</p>"
         "<table><tr><th>Study</th>" + "".join(f"<th>{_esc(f)}</th>" for f in field_ids)
+        + "</tr>" + "".join(matrix_rows) + "</table>"
+    )
+    return "".join(parts)
+
+
+def render_extraction_html(extractions: list[StudyExtraction], schema: Schema,
+                           run_id: str) -> str:
+    """Extraction review report — no gold sheet required. Same clean-table,
+    hover-tooltip provenance rules as the benchmark report (spec §4)."""
+    field_ids = [f.id for f in schema.fields]
+    total = len(extractions) * len(field_ids)
+    n_accepted = sum(len(e.accepted) for e in extractions)
+    n_flagged = sum(len(e.flagged) for e in extractions)
+    coverage = f"{n_accepted / total * 100:.1f}%" if total else "n/a"
+
+    parts = [f"<style>{_CSS}</style>"]
+    parts.append(f"<h1>Systematic review extraction — run {_esc(run_id)}</h1>")
+    parts.append(
+        '<div class="cards">'
+        f'<div class="card">Studies<b>{len(extractions)}</b></div>'
+        f'<div class="card">Fields<b>{len(field_ids)}</b></div>'
+        f'<div class="card">Accepted values<b>{n_accepted}</b></div>'
+        f'<div class="card">Flagged for review<b>{n_flagged}</b></div>'
+        f'<div class="card">Coverage<b>{coverage}</b></div>'
+        "</div>"
+    )
+    parts.append(
+        "<h2>Study × field matrix</h2>"
+        "<p>Hover over a value (or tab to it) to see its provenance "
+        "(quote, page, method, confidence). Amber cells are flagged for your "
+        "review — the tooltip shows every candidate value.</p>"
+    )
+    matrix_rows = []
+    for e in extractions:
+        cells = []
+        for fid in field_ids:
+            if fid in e.accepted:
+                v = e.accepted[fid]
+                lines = [
+                    f'quote: "{_esc(v.quote)}" (page {_esc(v.page)})',
+                    f"unit: {_esc(v.unit) if v.unit else '—'} · method: {_esc(v.method)}"
+                    f" · anchor: {_esc(v.anchor_status)} · confidence: {_esc(v.confidence)}",
+                ]
+                cells.append(_tooltip_cell(_esc(v.value), lines, "#e6f4ea"))
+            elif fid in e.flagged:
+                f = e.flagged[fid]
+                lines = [f"<i>flagged: {_esc(f.reason)}</i>"] + [
+                    f'candidate: {_esc(c.value)}{" " + _esc(c.unit) if c.unit else ""} — '
+                    f'"{_esc(c.quote)}" (page {_esc(c.page)}, confidence {_esc(c.confidence)})'
+                    for c in f.candidates
+                ]
+                cells.append(_tooltip_cell("⚑ review", lines, "#fef7e0"))
+            else:
+                cells.append(_tooltip_cell("—", [], "#f8f9fa"))
+        matrix_rows.append(f"<tr><th>{_esc(e.study_id)}</th>{''.join(cells)}</tr>")
+    parts.append(
+        "<table><tr><th>Study</th>"
+        + "".join(f"<th>{_esc(f)}</th>" for f in field_ids)
         + "</tr>" + "".join(matrix_rows) + "</table>"
     )
     return "".join(parts)
